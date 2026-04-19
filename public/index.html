@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Model Router Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>🤖 Model Router Dashboard</h1>
+    <p>Real-time routing analytics and decision tracking</p>
+  </header>
+
+  <main>
+    <!-- Stats Overview -->
+    <section class="stats-grid">
+      <div class="stat-card">
+        <h3>Total Requests</h3>
+        <div class="stat-value" id="total-requests">-</div>
+      </div>
+      <div class="stat-card">
+        <h3>Total Cost</h3>
+        <div class="stat-value" id="total-cost">-</div>
+      </div>
+      <div class="stat-card">
+        <h3>Escalation Rate</h3>
+        <div class="stat-value" id="escalation-rate">-</div>
+      </div>
+      <div class="stat-card">
+        <h3>Avg Latency</h3>
+        <div class="stat-value" id="avg-latency">-</div>
+      </div>
+    </section>
+
+    <!-- Model Breakdown -->
+    <section class="card">
+      <h2>Model Usage</h2>
+      <div id="model-breakdown" class="breakdown-grid"></div>
+    </section>
+
+    <!-- Recent Decisions -->
+    <section class="card">
+      <div class="section-header">
+        <h2>Recent Decisions</h2>
+        <button id="refresh-btn" class="btn-secondary">↻ Refresh</button>
+      </div>
+      <div class="table-container">
+        <table id="decisions-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Model</th>
+              <th>Rule</th>
+              <th>Tokens</th>
+              <th>Status</th>
+              <th>Latency</th>
+              <th>Cost</th>
+            </tr>
+          </thead>
+          <tbody id="decisions-body">
+            <tr><td colspan="7" class="loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Routing Rules -->
+    <section class="card">
+      <h2>Routing Rules</h2>
+      <div id="rules-container" class="rules-grid"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Auto-refreshes every 10 seconds • Last updated: <span id="last-updated">-</span></p>
+  </footer>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

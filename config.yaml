@@ -1,0 +1,37 @@
+models:
+  haiku:
+    id: claude-haiku-4-5-20251001
+    cost_per_1k_input: 0.001
+    cost_per_1k_output: 0.005
+  sonnet:
+    id: claude-sonnet-4-6-20250514
+    cost_per_1k_input: 0.003
+    cost_per_1k_output: 0.015
+  opus:
+    id: claude-opus-4-6-20250514
+    cost_per_1k_input: 0.015
+    cost_per_1k_output: 0.075
+
+rules:
+  - name: simple-queries
+    conditions:
+      prompt_tokens_lt: 500
+      no_tool_use: true
+    model: haiku
+
+  - name: multi-file-edits
+    conditions:
+      tool_count_gt: 3
+      file_count_gt: 2
+    model: opus
+
+  - name: default
+    model: sonnet
+
+escalation:
+  enabled: true
+  max_depth: 2
+  triggers:
+    - api_error
+    - empty_response
+    - timeout
