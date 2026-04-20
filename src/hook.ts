@@ -4,6 +4,13 @@ import { join } from "path";
 import { parse as parseYaml } from "yaml";
 import { logDecision, hashPrompt } from "./logger.js";
 import { getDb } from "./db.js";
+import {
+  type RoutingStrategy,
+  extractFeatures,
+  RuleBasedStrategy,
+  MLClassifierStrategy,
+  LLMRoutingStrategy,
+} from "./strategies/index.js";
 
 const SETTINGS_PATH = join(process.env.HOME || "~", ".claude", "settings.json");
 const CONFIG_PATH = join(import.meta.dirname, "..", "config.yaml");
@@ -14,32 +21,7 @@ const DEFAULT_MODEL_MAP: Record<string, string> = {
   opus: "global.anthropic.claude-opus-4-6-v1",
 };
 
-function loadModelMap(): Record<string, string> {
-  try {
-    if (existsSync(CONFIG_PATH)) {
-      const raw = readFileSync(CONFIG_PATH, "utf-8");
-      const config = parseYaml(raw);
-      if (config?.models && typeof config.models === "object") {
-        const map: Record<string, string> = {};
-        for (const [tier, value] of Object.entries(config.models)) {
-          const entry = value as { id?: string };
-          if (entry?.id) {
-            map[tier] = entry.id;
-          }
-        }
-        // Only use config map if it has entries, otherwise fall back
-        if (Object.keys(map).length > 0) {
-          return map;
-        }
-      }
-    }
-  } catch {
-    // Fall through to defaults
-  }
-  return DEFAULT_MODEL_MAP;
-}
-
-const MODEL_MAP = loadModelMap();
+const ESCALATION_ORDER = ["haiku", "sonnet", "opus"];
 
 interface HookInput {
   session_id: string;
@@ -47,13 +29,55 @@ interface HookInput {
   hook_event_name: string;
 }
 
-interface AnalysisResult {
-  model: string;
-  reasoning: string;
-  confidence: number;
+interface Config {
+  models?: Record<string, { id?: string }>;
+  routing?: {
+    strategy?: string;
+    llm_api_key?: string;
+    llm_endpoint?: string;
+  };
 }
 
-const ESCALATION_ORDER = ["haiku", "sonnet", "opus"];
+function loadConfig(): Config {
+  try {
+    if (existsSync(CONFIG_PATH)) {
+      const raw = readFileSync(CONFIG_PATH, "utf-8");
+      return parseYaml(raw) as Config;
+    }
+  } catch {
+    // Fall through
+  }
+  return {};
+}
+
+function loadModelMap(): Record<string, string> {
+  const config = loadConfig();
+  if (config.models && typeof config.models === "object") {
+    const map: Record<string, string> = {};
+    for (const [tier, value] of Object.entries(config.models)) {
+      if (value?.id) {
+        map[tier] = value.id;
+      }
+    }
+    if (Object.keys(map).length > 0) return map;
+  }
+  return DEFAULT_MODEL_MAP;
+}
+
+function loadStrategy(): RoutingStrategy {
+  const config = loadConfig();
+  const strategyName = config.routing?.strategy || "rule-based";
+
+  switch (strategyName) {
+    case "ml-classifier":
+      return new MLClassifierStrategy();
+    case "llm-routing":
+      return new LLMRoutingStrategy(config.routing?.llm_api_key, config.routing?.llm_endpoint);
+    case "rule-based":
+    default:
+      return new RuleBasedStrategy();
+  }
+}
 
 function getRecentFailureRate(model: string): number {
   try {
@@ -67,7 +91,7 @@ function getRecentFailureRate(model: string): number {
         prompt_category TEXT
       )
     `);
-    const since = Date.now() - 30 * 60 * 1000; // last 30 minutes
+    const since = Date.now() - 30 * 60 * 1000;
     const stats = db.prepare(`
       SELECT
         COUNT(*) as total,
@@ -82,7 +106,7 @@ function getRecentFailureRate(model: string): number {
   }
 }
 
-function maybeEscalate(model: string, reasoning: string): AnalysisResult {
+function maybeEscalate(model: string, reasoning: string, confidence: number) {
   const failureRate = getRecentFailureRate(model);
   if (failureRate > 0.4) {
     const idx = ESCALATION_ORDER.indexOf(model);
@@ -95,70 +119,11 @@ function maybeEscalate(model: string, reasoning: string): AnalysisResult {
       };
     }
   }
-  return { model, reasoning, confidence: model === "opus" ? 0.85 : model === "sonnet" ? 0.75 : 0.8 };
-}
-
-function analyzePrompt(prompt: string): AnalysisResult {
-  const lower = prompt.toLowerCase();
-  const wordCount = prompt.split(/\s+/).length;
-
-  // Complex tasks -> Opus
-  const opusSignals = [
-    "refactor",
-    "architect",
-    "design",
-    "security review",
-    "debug.*across",
-    "performance",
-    "migrate",
-    "\\bplan\\b",
-    "implement.*system",
-    "build.*from scratch",
-    "complex",
-    "analyze codebase",
-    "code review",
-  ];
-  for (const signal of opusSignals) {
-    if (new RegExp(signal).test(lower)) {
-      return maybeEscalate("opus", `complex task signal: "${signal}"`);
-    }
-  }
-
-  // Action tasks -> Sonnet
-  const sonnetSignals = [
-    "add", "update", "fix", "create", "implement", "build",
-    "change", "modify", "write", "remove", "delete", "move",
-    "endpoint", "function", "component", "test", "deploy",
-    "configure", "setup", "install",
-  ];
-  for (const signal of sonnetSignals) {
-    if (lower.includes(signal)) {
-      return maybeEscalate("sonnet", `action task: "${signal}"`);
-    }
-  }
-
-  // Questions -> Haiku
-  const questionSignals = [
-    "what", "how", "why", "where", "when", "which",
-    "is", "are", "can", "does", "do",
-    "explain", "show", "list", "describe",
-  ];
-  for (const signal of questionSignals) {
-    if (new RegExp(`\\b${signal}\\b`).test(lower)) {
-      return maybeEscalate("haiku", `question signal: "${signal}"`);
-    }
-  }
-
-  // Short prompts with no action signals -> Haiku
-  if (wordCount < 30) {
-    return maybeEscalate("haiku", "short prompt, no action signals");
-  }
-
-  // Default -> Sonnet
-  return maybeEscalate("sonnet", "standard task complexity");
+  return { model, reasoning, confidence };
 }
 
 function setModel(model: string): void {
+  const MODEL_MAP = loadModelMap();
   const settings = JSON.parse(readFileSync(SETTINGS_PATH, "utf-8"));
   const modelId = MODEL_MAP[model] || model;
 
@@ -168,26 +133,33 @@ function setModel(model: string): void {
   writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n");
 }
 
-function main() {
+async function main() {
   let input = "";
   process.stdin.setEncoding("utf-8");
   process.stdin.on("data", (chunk) => (input += chunk));
-  process.stdin.on("end", () => {
+  process.stdin.on("end", async () => {
     try {
       const hookData: HookInput = JSON.parse(input);
-      const { model, reasoning, confidence } = analyzePrompt(hookData.prompt);
+      const features = extractFeatures(hookData.prompt);
 
-      setModel(model);
+      // Load and execute strategy
+      const strategy = loadStrategy();
+      const decision = await strategy.route(features);
+
+      // Apply adaptive escalation
+      const finalDecision = maybeEscalate(decision.model, decision.reasoning, decision.confidence);
+
+      setModel(finalDecision.model);
 
       // Log decision to SQLite
       try {
         logDecision({
           promptHash: hashPrompt(hookData.prompt),
-          promptTokens: Math.ceil(hookData.prompt.length / 4),
-          modelSelected: model,
-          ruleMatched: reasoning,
+          promptTokens: features.estimatedTokens,
+          modelSelected: finalDecision.model,
+          ruleMatched: finalDecision.reasoning,
           escalatedFrom: null,
-          confidence,
+          confidence: finalDecision.confidence,
         });
       } catch {
         // Don't block on logging errors
@@ -197,7 +169,7 @@ function main() {
       const output = JSON.stringify({
         continue: true,
         suppressOutput: false,
-        additionalContext: `[Model Router] Selected: ${model} — ${reasoning}`,
+        additionalContext: `[Model Router] ${strategy.name}: ${finalDecision.model} — ${finalDecision.reasoning}`,
       });
       process.stdout.write(output);
     } catch (err) {
