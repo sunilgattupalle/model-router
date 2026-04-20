@@ -1,14 +1,14 @@
 models:
   haiku:
-    id: claude-haiku-4-5-20251001
+    id: global.anthropic.claude-haiku-4-5-20251001-v1:0
     cost_per_1k_input: 0.001
     cost_per_1k_output: 0.005
   sonnet:
-    id: claude-sonnet-4-6-20250514
+    id: global.anthropic.claude-sonnet-4-5-20250929-v1:0
     cost_per_1k_input: 0.003
     cost_per_1k_output: 0.015
   opus:
-    id: claude-opus-4-6-20250514
+    id: global.anthropic.claude-opus-4-6-v1
     cost_per_1k_input: 0.015
     cost_per_1k_output: 0.075
 
