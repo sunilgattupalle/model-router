@@ -11,6 +11,7 @@
     "proxy": "tsx src/proxy.ts",
     "dashboard": "tsx src/dashboard.ts",
     "cli": "tsx src/cli.ts",
+    "validate": "tsx src/validate-classifier.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src/"

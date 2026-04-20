@@ -235,7 +235,50 @@ npm run cli decisions
 
 # Rule hit rates
 npm run cli rules
+
+# Validate ML classifier performance
+npm run validate
 ```
+
+### ML Classifier Validation
+
+The `validate` command tests the ML classifier's accuracy:
+
+```bash
+npm run validate
+```
+
+Output:
+```
+📊 ML Classifier Validation
+   Training set: 80 samples
+   Test set: 20 samples
+
+Overall Accuracy: 75.0%
+   (15/20 correct)
+
+Per-Model Accuracy:
+   haiku    66.7%  █████████████  (4/6)
+   sonnet   80.0%  ████████████████  (8/10)
+   opus     75.0%  ███████████████  (3/4)
+
+Confusion Matrix:
+              Predicted
+        haiku  sonnet  opus
+haiku      4     2     0
+sonnet     1     8     1
+opus       0     1     3
+
+Interpretation:
+⚠️  Good - ML classifier is useful but has room for improvement
+```
+
+**How it works:**
+- Splits your successful decisions into 80% training / 20% test
+- Trains the classifier on training set
+- Measures accuracy on held-out test set
+- Shows confusion matrix (which models get confused)
+- Needs at least 20 successful decisions to run
 
 ## Dashboard
 
