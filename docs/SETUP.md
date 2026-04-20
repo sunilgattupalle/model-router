@@ -1,147 +1,109 @@
 # Setup Guide
 
-## Quick Start
+## Hook-Based Setup (Primary)
 
-1. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-2. **Start the proxy**
-   ```bash
-   npm run proxy
-   ```
-
-   This starts a proxy server on `http://localhost:8080` that routes requests to the Anthropic API.
-
-3. **Configure Claude Code to use the proxy**
-
-   Set the `ANTHROPIC_BASE_URL` environment variable to point to the proxy:
-
-   ```bash
-   export ANTHROPIC_BASE_URL=http://localhost:8080
-   ```
-
-   Or add to your shell profile (`~/.zshrc` or `~/.bashrc`):
-   ```bash
-   echo 'export ANTHROPIC_BASE_URL=http://localhost:8080' >> ~/.zshrc
-   source ~/.zshrc
-   ```
-
-4. **Use Claude Code normally**
-
-   The proxy will:
-   - Intercept all requests
-   - Route to Haiku/Sonnet/Opus based on task complexity
-   - Log all decisions and outcomes
-   - Auto-escalate on failures
-
-## Verify It's Working
+### 1. Install and build
 
 ```bash
-# In another terminal, watch the router logs
-npm run cli decisions
+cd model-router
+npm install
+npm run build
+```
 
-# Check stats
+### 2. Configure the hook
+
+Add to your project's `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "command": "node /absolute/path/to/model-router/dist/hook.js"
+      }
+    ]
+  }
+}
+```
+
+Replace `/absolute/path/to/model-router` with the actual path.
+
+### 3. Start using Claude Code
+
+Open a Claude Code session in the project. Every prompt will be analyzed by the hook, and the model will switch automatically. You will see a `[Model Router]` message indicating which model was selected.
+
+### 4. Monitor with the dashboard
+
+```bash
+npm run dashboard
+# Open http://localhost:3000
+```
+
+Or use the CLI:
+
+```bash
 npm run cli stats
+npm run cli decisions
 ```
 
-You should see routing decisions being logged as you use Claude Code.
+### Disable routing
 
-## Configuration
+Remove the hook entry from `.claude/settings.json`, or comment it out. Claude Code will use its default model.
 
-### Adjust Routing Rules
+### Adjust routing
 
-Edit `config.yaml` to tune when each model is used:
+Edit `config.yaml` to change routing rules. The hook uses prompt analysis (keyword matching) to classify prompts. To change the classification logic, edit `src/hook.ts` and rebuild.
 
-```yaml
-rules:
-  - name: simple-queries
-    conditions:
-      prompt_tokens_lt: 500  # Increase to route more to Haiku
-      no_tool_use: true
-    model: haiku
-    
-  - name: multi-file-edits
-    conditions:
-      tool_count_gt: 3      # Adjust thresholds as needed
-      file_count_gt: 2
-    model: opus
-```
+## Proxy-Based Setup (Legacy/Alternative)
 
-### Change Proxy Port
+For environments where hooks are not available.
 
-```bash
-npm run proxy 3000  # Use port 3000 instead
-```
+### 1. Start the proxy
 
-Then update `ANTHROPIC_BASE_URL=http://localhost:3000`
-
-### Disable Routing (Temporary)
-
-Just stop the proxy and unset the environment variable:
-
-```bash
-# Kill the proxy (Ctrl+C)
-unset ANTHROPIC_BASE_URL
-```
-
-Claude Code will use the direct Anthropic API again.
-
-## Troubleshooting
-
-### "Connection refused"
-
-Make sure the proxy is running:
 ```bash
 npm run proxy
 ```
 
-### "No decisions being logged"
+Starts on `http://localhost:8080`.
 
-Verify the proxy is being used:
-```bash
-echo $ANTHROPIC_BASE_URL
-# Should show: http://localhost:8080
-```
-
-Check proxy logs for incoming requests.
-
-### High escalation rate
-
-If escalation rate is > 20%, your rules are too aggressive. Adjust thresholds in `config.yaml`:
-
-- Increase `prompt_tokens_lt` to route fewer tasks to Haiku
-- Decrease `tool_count_gt` / `file_count_gt` to route fewer to Opus
-
-### Proxy errors
-
-Check proxy logs for error details. Common issues:
-- Invalid API key (proxy passes through to Anthropic)
-- Network issues reaching api.anthropic.com
-- Malformed requests
-
-## Advanced: Use with Multiple Projects
-
-You can run multiple proxies on different ports with different configs:
+### 2. Point Claude Code at the proxy
 
 ```bash
-# Terminal 1 - aggressive routing for project A
-cd project-a
-npm run proxy 8080
-
-# Terminal 2 - conservative routing for project B  
-cd project-b
-npm run proxy 8081
+export ANTHROPIC_BASE_URL=http://localhost:8080
 ```
 
-Then set `ANTHROPIC_BASE_URL` per project in `.env` files.
+Add to `~/.zshrc` or `~/.bashrc` to persist.
 
-## Next Steps
+### 3. Use Claude Code normally
 
-After running for a few days:
+The proxy intercepts requests, applies routing rules, and forwards to the Anthropic API.
 
-1. Review stats: `npm run cli stats`
-2. Tune rules based on escalation rate
-3. Check decisions: `npm run cli decisions 100`
-4. Adjust `config.yaml` and restart proxy
+### Disable proxy routing
+
+Stop the proxy (Ctrl+C) and unset the env var:
+
+```bash
+unset ANTHROPIC_BASE_URL
+```
+
+## Troubleshooting
+
+### Hook not running
+
+- Verify `.claude/settings.json` has the hook configured
+- Check the path to `dist/hook.js` is absolute and correct
+- Run `npm run build` to ensure the JS is compiled
+- Test manually: `echo '{"session_id":"test","prompt":"hello","hook_event_name":"UserPromptSubmit"}' | node dist/hook.js`
+
+### No decisions in dashboard
+
+- The hook logs decisions to `data/router.db`
+- Make sure the hook is running (check for `[Model Router]` messages in Claude Code)
+- Verify the database exists: `ls data/router.db`
+
+### High cost (not routing to Haiku)
+
+- Check `npm run cli decisions` to see which models are being selected
+- Most coding prompts contain action keywords and route to Sonnet
+- Haiku is reserved for short, simple questions

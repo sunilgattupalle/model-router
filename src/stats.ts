@@ -5,6 +5,7 @@ export interface Stats {
   byModel: Record<string, { count: number; totalCost: number; avgLatency: number }>;
   escalationRate: number;
   totalCost: number;
+  avgLatency: number;
   estimatedSavings: number;
 }
 
@@ -44,11 +45,16 @@ export function getStats(since?: number): Stats {
     modelStats[m.model] = { count: m.count, totalCost: m.total_cost, avgLatency: m.avg_latency };
   }
 
+  const avgLatency = byModel.length > 0
+    ? byModel.reduce((sum, m) => sum + m.avg_latency * m.count, 0) / byModel.reduce((sum, m) => sum + m.count, 0)
+    : 0;
+
   return {
     totalRequests: total.count,
     byModel: modelStats,
     escalationRate: total.count > 0 ? escalated.count / total.count : 0,
     totalCost,
+    avgLatency,
     estimatedSavings: opusBaseline - totalCost,
   };
 }

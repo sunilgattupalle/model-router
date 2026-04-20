@@ -1,94 +1,58 @@
 # Model Router
 
-Intelligent model routing for Claude Code that selects between Haiku, Sonnet, and Opus based on task complexity. Reduces costs 20-30% while maintaining quality through auto-escalation.
+Intelligent model routing for Claude Code via a `UserPromptSubmit` hook. Automatically selects between Haiku, Sonnet, and Opus based on prompt complexity. Reduces costs while maintaining quality.
 
 ## Features
 
-- **Rules-based routing** — Route tasks to cheaper models when appropriate
-- **Auto-escalation** — Automatically retry on more capable models when needed
-- **Full observability** — Track decisions, outcomes, costs, and savings
-- **Local-first** — SQLite storage, no external dependencies
+- **Hook-based routing** -- Analyzes each prompt and sets the optimal model before execution
+- **Automatic model switching** -- Writes to `~/.claude/settings.json`, which Claude Code hot-reloads
+- **Full observability** -- SQLite logging of every routing decision
+- **Web dashboard** -- Real-time stats at `http://localhost:3000`
+- **CLI tools** -- Quick stats from the terminal
+- **Local-first** -- No external infrastructure required
 
-## Installation
+## Quick Start
 
-```bash
-npm install
-```
-
-## Quick Start (Proxy Mode)
-
-1. **Start the proxy**
+1. **Install and build**
    ```bash
-   npm run proxy
+   npm install && npm run build
    ```
 
-2. **Configure Claude Code**
-   ```bash
-   export ANTHROPIC_BASE_URL=http://localhost:8080
+2. **Configure the hook** in `.claude/settings.json` (project-level):
+   ```json
+   {
+     "hooks": {
+       "UserPromptSubmit": [
+         {
+           "type": "command",
+           "command": "node /path/to/model-router/dist/hook.js"
+         }
+       ]
+     }
+   }
    ```
 
-3. **Use Claude Code normally** — routing happens automatically
+3. **Start a Claude Code session** in the project. The hook runs on every prompt and selects the model automatically.
 
-4. **View stats**
+4. **View analytics**
    ```bash
-   npm run cli stats
-   npm run cli decisions
+   npm run dashboard    # Web dashboard on http://localhost:3000
+   npm run cli stats    # Cost breakdown, model distribution
+   npm run cli decisions  # Recent routing decisions
+   npm run cli rules    # Rule hit rates
    ```
 
-See [docs/SETUP.md](docs/SETUP.md) for detailed setup instructions.
+## How Routing Works
 
-## Usage
+The hook analyzes each prompt and selects a model tier:
 
-### As a Library
+| Tier | When | Examples |
+|------|------|----------|
+| **Haiku** | Short, simple questions (< 30 words, no action keywords) | "what does this function do?", "explain this error" |
+| **Sonnet** | Standard coding tasks | "add a test for X", "fix the bug in Y", "create a component" |
+| **Opus** | Complex multi-step work | "refactor the auth system", "architect a new module", "security review" |
 
-```typescript
-import { route, executeWithEscalation } from "model-router";
-
-// Extract features from your request
-const features = {
-  promptTokens: 300,
-  toolCount: 1,
-  fileCount: 1,
-  hasToolUse: true
-};
-
-// Get routing decision
-const decision = route(features);
-console.log(`Routing to ${decision.model} (rule: ${decision.rule})`);
-
-// Execute with auto-escalation
-const result = await executeWithEscalation(
-  prompt,
-  decision.model,
-  async (modelId) => {
-    // Your execution logic here
-    const response = await callClaude(modelId, prompt);
-    return {
-      success: response.ok,
-      tokensUsed: response.usage.total_tokens,
-      latencyMs: response.latency
-    };
-  }
-);
-
-console.log(`Final model: ${result.finalModel}`);
-if (result.escalations.length > 0) {
-  console.log(`Escalated from: ${result.escalations.join(" → ")}`);
-}
-```
-
-### CLI Commands
-
-```bash
-# View stats (cost breakdown, savings, escalation rate)
-model-router stats
-
-# View recent routing decisions
-model-router decisions [limit]
-
-# View routing rules and hit rates
-model-router rules
-```
+The selected model is written to `~/.claude/settings.json`. Claude Code hot-reloads this file, so the next response uses the chosen model.
 
 ## Configuration
 
@@ -101,38 +65,23 @@ rules:
       prompt_tokens_lt: 500
       no_tool_use: true
     model: haiku
-    
+
   - name: multi-file-edits
     conditions:
       tool_count_gt: 3
       file_count_gt: 2
     model: opus
-    
+
   - name: default
     model: sonnet
 ```
 
-### Available Conditions
+## CLI Commands
 
-- `prompt_tokens_lt` — Route to this model if prompt is shorter than N tokens
-- `no_tool_use` — Route to this model if no tools are being used
-- `tool_count_gt` — Route to this model if more than N tools are used
-- `file_count_gt` — Route to this model if more than N files are involved
-
-## How It Works
-
-```
-Request
-  ↓
-Extract features (tokens, tool count, file count)
-  ↓
-Apply routing rules → Select model (Haiku/Sonnet/Opus)
-  ↓
-Execute on selected model
-  ↓
-If failure detected → Escalate to next tier
-  ↓
-Log decision + outcome to SQLite
+```bash
+npm run cli stats      # Cost breakdown, savings, escalation rate
+npm run cli decisions  # Recent routing decisions
+npm run cli rules      # Routing rules and hit rates
 ```
 
 ## Development
@@ -141,14 +90,12 @@ Log decision + outcome to SQLite
 npm install          # Install dependencies
 npm run build        # Compile TypeScript
 npm test             # Run tests
-npm run cli stats    # Run CLI locally
+npm run dashboard    # Start web dashboard
 ```
 
-## Next Steps
+## Alternative: Proxy Mode (Legacy)
 
-- **Phase 2**: Train a classifier on collected outcome data
-- **Phase 3**: Implement contextual bandit for adaptive routing
-- **Proxy Integration**: Wire as HTTP proxy between Claude Code and API
+The project also includes a proxy-based approach (`npm run proxy`) that intercepts HTTP requests on `localhost:8080`. This requires setting `ANTHROPIC_BASE_URL` and is maintained as an alternative for environments where hooks are not available. See [docs/SETUP.md](docs/SETUP.md) for proxy setup instructions.
 
 ## License
 

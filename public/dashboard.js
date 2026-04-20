@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:3000";
+const API_BASE = window.location.origin;
 let autoRefreshInterval;
 
 // Format helpers
@@ -26,16 +26,25 @@ function formatPercent(value) {
 // Fetch data from API
 async function fetchStats() {
   const response = await fetch(`${API_BASE}/api/stats`);
+  if (!response.ok) throw new Error(`Stats API error: ${response.status}`);
   return response.json();
 }
 
 async function fetchDecisions(limit = 50) {
   const response = await fetch(`${API_BASE}/api/decisions?limit=${limit}`);
+  if (!response.ok) throw new Error(`Decisions API error: ${response.status}`);
   return response.json();
 }
 
 async function fetchRules() {
   const response = await fetch(`${API_BASE}/api/rules`);
+  if (!response.ok) throw new Error(`Rules API error: ${response.status}`);
+  return response.json();
+}
+
+async function fetchCurrentModel() {
+  const response = await fetch(`${API_BASE}/api/current-model`);
+  if (!response.ok) throw new Error(`Current model API error: ${response.status}`);
   return response.json();
 }
 
@@ -44,25 +53,41 @@ function renderStats(stats) {
   document.getElementById("total-requests").textContent = stats.totalRequests;
   document.getElementById("total-cost").textContent = formatCost(stats.totalCost);
   document.getElementById("escalation-rate").textContent = formatPercent(stats.escalationRate);
-  document.getElementById("avg-latency").textContent = formatLatency(Math.round(stats.avgLatency));
+  document.getElementById("avg-latency").textContent = formatLatency(Math.round(stats.avgLatency || 0));
 }
 
-function renderModelBreakdown(stats) {
+function renderCurrentModel(modelData) {
+  const el = document.getElementById("current-model");
+  if (!el) return;
+  const name = (modelData.modelName || "unknown").toUpperCase();
+  el.textContent = name;
+  el.className = "current-model-value model-active-" + (modelData.modelName || "unknown");
+}
+
+function renderModelBreakdown(stats, currentModelName) {
   const container = document.getElementById("model-breakdown");
   container.innerHTML = "";
+
+  if (!stats.byModel || Object.keys(stats.byModel).length === 0) {
+    container.innerHTML = '<div class="loading">No model data yet</div>';
+    return;
+  }
 
   for (const [model, data] of Object.entries(stats.byModel)) {
     const div = document.createElement("div");
     div.className = "model-item";
+    if (model === currentModelName) {
+      div.classList.add("model-item-active");
+    }
     div.innerHTML = `
       <div class="model-header">
-        <span class="model-name">${model.toUpperCase()}</span>
+        <span class="model-name">${model.toUpperCase()}${model === currentModelName ? ' <span class="active-badge">ACTIVE</span>' : ''}</span>
         <span>${data.count} requests</span>
       </div>
       <div class="model-stats">
-        <div>Cost: ${formatCost(data.cost)}</div>
+        <div>Cost: ${formatCost(data.totalCost)}</div>
         <div>Avg Latency: ${formatLatency(Math.round(data.avgLatency))}</div>
-        <div>Tokens: ${data.tokens.toLocaleString()}</div>
+        <div>Requests: ${data.count}</div>
       </div>
     `;
     container.appendChild(div);
@@ -73,38 +98,52 @@ function renderDecisions(decisions) {
   const tbody = document.getElementById("decisions-body");
   tbody.innerHTML = "";
 
-  if (decisions.length === 0) {
+  if (!Array.isArray(decisions) || decisions.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" class="loading">No decisions yet</td></tr>';
     return;
   }
 
   decisions.forEach(d => {
-    const tr = document.createElement("tr");
+    try {
+      const tr = document.createElement("tr");
 
-    const statusBadge = d.status
-      ? `<span class="badge badge-${d.status === 'success' ? 'success' : 'error'}">${d.status}</span>`
-      : '<span class="badge badge-pending">pending</span>';
+      const statusBadge = d.status
+        ? `<span class="badge badge-${d.status === 'success' ? 'success' : 'error'}">${d.status}</span>`
+        : '<span class="badge badge-pending">pending</span>';
 
-    const modelDisplay = d.escalated_from
-      ? `<span class="badge-model">${d.model}</span> <span class="escalated">↑${d.escalated_from}</span>`
-      : `<span class="badge-model">${d.model}</span>`;
+      const modelDisplay = d.escalated_from
+        ? `<span class="badge-model">${d.model}</span> <span class="escalated">${d.escalated_from}</span>`
+        : `<span class="badge-model">${d.model}</span>`;
 
-    tr.innerHTML = `
-      <td>${formatTime(d.timestamp)}</td>
-      <td>${modelDisplay}</td>
-      <td>${d.rule}</td>
-      <td>${d.tokens.toLocaleString()}</td>
-      <td>${statusBadge}</td>
-      <td>${formatLatency(d.latency_ms)}</td>
-      <td>${formatCost(d.cost_usd)}</td>
-    `;
-    tbody.appendChild(tr);
+      const tokens = d.tokens != null ? d.tokens.toLocaleString() : "-";
+
+      tr.innerHTML = `
+        <td>${formatTime(d.timestamp)}</td>
+        <td>${modelDisplay}</td>
+        <td>${d.rule || "-"}</td>
+        <td>${tokens}</td>
+        <td>${statusBadge}</td>
+        <td>${formatLatency(d.latency_ms)}</td>
+        <td>${formatCost(d.cost_usd)}</td>
+      `;
+      tbody.appendChild(tr);
+    } catch (rowErr) {
+      console.error("Failed to render decision row:", rowErr, d);
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="7" class="loading">Error rendering row</td>`;
+      tbody.appendChild(tr);
+    }
   });
 }
 
 function renderRules(rules) {
   const container = document.getElementById("rules-container");
   container.innerHTML = "";
+
+  if (!Array.isArray(rules) || rules.length === 0) {
+    container.innerHTML = '<div class="loading">No rules configured</div>';
+    return;
+  }
 
   rules.forEach(rule => {
     const div = document.createElement("div");
@@ -129,16 +168,35 @@ function renderRules(rules) {
 // Update dashboard
 async function updateDashboard() {
   try {
-    const [stats, decisions, rules] = await Promise.all([
-      fetchStats(),
-      fetchDecisions(),
-      fetchRules()
+    const [stats, decisions, rules, currentModel] = await Promise.all([
+      fetchStats().catch(err => { console.error("Stats fetch failed:", err); return null; }),
+      fetchDecisions().catch(err => { console.error("Decisions fetch failed:", err); return null; }),
+      fetchRules().catch(err => { console.error("Rules fetch failed:", err); return null; }),
+      fetchCurrentModel().catch(err => { console.error("Current model fetch failed:", err); return null; })
     ]);
 
-    renderStats(stats);
-    renderModelBreakdown(stats);
-    renderDecisions(decisions);
-    renderRules(rules);
+    if (currentModel) {
+      renderCurrentModel(currentModel);
+    }
+
+    if (stats) {
+      renderStats(stats);
+      renderModelBreakdown(stats, currentModel ? currentModel.modelName : null);
+    }
+
+    if (decisions) {
+      renderDecisions(decisions);
+    } else {
+      document.getElementById("decisions-body").innerHTML =
+        '<tr><td colspan="7" class="loading">Failed to load decisions</td></tr>';
+    }
+
+    if (rules) {
+      renderRules(rules);
+    } else {
+      document.getElementById("rules-container").innerHTML =
+        '<div class="loading">Failed to load rules</div>';
+    }
 
     document.getElementById("last-updated").textContent = new Date().toLocaleTimeString();
   } catch (error) {

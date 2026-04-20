@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx /Users/sunil.gattupalle/harness/model-router/src/hook.ts"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx /Users/sunil.gattupalle/harness/model-router/src/stop-hook.ts"
+          }
+        ]
+      }
+    ]
+  }
+}
