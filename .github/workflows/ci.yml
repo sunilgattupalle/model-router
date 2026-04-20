@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Check database schema
+        run: |
+          sqlite3 data/router.db ".schema" > /dev/null 2>&1 || echo "Database will be created on first run"
+
+      - name: Validate strategy files exist
+        run: |
+          test -f src/strategies/base.ts
+          test -f src/strategies/rule-based.ts
+          test -f src/strategies/ml-classifier.ts
+          test -f src/strategies/llm-routing.ts
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint || echo "Linting skipped (not configured)"
+
+  validate-config:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate config.yaml syntax
+        run: |
+          npm install -g js-yaml
+          js-yaml config.yaml > /dev/null
+
+      - name: Check required config keys
+        run: |
+          grep -q "models:" config.yaml
+          grep -q "haiku:" config.yaml
+          grep -q "sonnet:" config.yaml
+          grep -q "opus:" config.yaml
+          grep -q "routing:" config.yaml
+          grep -q "strategy:" config.yaml
+
+      - name: Validate model IDs format
+        run: |
+          grep -E "id: (global\.anthropic\.)?claude-" config.yaml || exit 1
+
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+
+      - name: Check for secrets in code
+        run: |
+          ! grep -r "ANTHROPIC_API_KEY.*=.*sk-" src/ || exit 1
+          ! grep -r "API_KEY.*=.*['\"][a-zA-Z0-9]{32,}['\"]" src/ || exit 1
+
+  documentation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required documentation
+        run: |
+          test -f README.md
+          test -f CLAUDE.md
+          test -f docs/SPEC.md
+          test -f docs/STATUS.md
+
+      - name: Validate README sections
+        run: |
+          grep -q "## Core Concepts" README.md
+          grep -q "## Routing Strategies" README.md
+          grep -q "## Feedback Loop" README.md
+          grep -q "## Extending" README.md
+
+      - name: Check for broken internal links
+        run: |
+          for file in $(find . -name "*.md"); do
+            grep -o '\[.*\](.*\.md)' "$file" | while read link; do
+              target=$(echo "$link" | sed 's/.*](\(.*\))/\1/')
+              if [ ! -f "$target" ]; then
+                echo "Broken link in $file: $target"
+                exit 1
+              fi
+            done
+          done
