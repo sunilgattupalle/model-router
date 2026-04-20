@@ -1,10 +1,12 @@
 # Model Router
 
-Intelligent, adaptive model routing for Claude Code with pluggable strategies and feedback loops.
+Intelligent, adaptive model routing for **Claude Code** with pluggable strategies and feedback loops.
+
+> **Note**: Currently **Claude Code only**. The hook-based integration requires Claude Code's `UserPromptSubmit` and `Stop` hooks. Does not work with Claude.ai web, Claude desktop app (non-Code), or direct API usage.
 
 ## Overview
 
-Model Router automatically selects the optimal Claude model (Haiku/Sonnet/Opus) for each prompt using pluggable routing strategies. It learns from outcomes and adapts over time through a feedback loop.
+Model Router automatically selects the optimal Claude model (Haiku/Sonnet/Opus) for each prompt using pluggable strategies. It learns from outcomes and adapts over time through a feedback loop.
 
 ## Core Concepts
 
@@ -95,6 +97,12 @@ If a model has >40% failure rate in the last 30 minutes, automatically escalate:
 - Sonnet → Opus
 - Opus → (no escalation)
 
+## Requirements
+
+- **Claude Code** (CLI, desktop app, or IDE extension)
+- Node.js 20+
+- Git repository (hooks are project-scoped)
+
 ## Quick Start
 
 ```bash
@@ -111,6 +119,13 @@ npm run dashboard  # http://localhost:3000
 ```
 
 The hooks activate automatically in any Claude Code session within this directory.
+
+**Why Claude Code only?** The system relies on:
+- `UserPromptSubmit` hook - runs before each turn, selects model
+- `Stop` hook - runs after each turn, logs outcomes
+- Live config reload - Claude Code hot-reloads `~/.claude/settings.json`
+
+These features don't exist in Claude.ai web or the non-Code desktop app.
 
 ## Configuration
 
