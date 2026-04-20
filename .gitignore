@@ -1,4 +1,20 @@
 node_modules/
 dist/
 *.db
+*.db-shm
+*.db-wal
 .env
+
+# Model artifacts (if we add persistent models in future)
+*.pkl
+*.model
+*.weights
+models/*.json
+
+# User data
+data/*.db
+data/*.db-*
+
+# Logs
+*.log
+npm-debug.log*
