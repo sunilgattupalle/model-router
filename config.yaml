@@ -28,6 +28,12 @@ rules:
   - name: default
     model: sonnet
 
+routing:
+  strategy: rule-based  # Options: rule-based, ml-classifier, llm-routing
+  # For llm-routing only:
+  # llm_api_key: YOUR_API_KEY
+  # llm_endpoint: https://api.anthropic.com/v1/messages
+
 escalation:
   enabled: true
   max_depth: 2
