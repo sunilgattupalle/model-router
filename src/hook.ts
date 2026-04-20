@@ -10,6 +10,7 @@ import {
   RuleBasedStrategy,
   MLClassifierStrategy,
   LLMRoutingStrategy,
+  HybridStrategy,
 } from "./strategies/index.js";
 
 const SETTINGS_PATH = join(process.env.HOME || "~", ".claude", "settings.json");
@@ -73,6 +74,8 @@ function loadStrategy(): RoutingStrategy {
       return new MLClassifierStrategy();
     case "llm-routing":
       return new LLMRoutingStrategy(config.routing?.llm_api_key, config.routing?.llm_endpoint);
+    case "hybrid":
+      return new HybridStrategy();
     case "rule-based":
     default:
       return new RuleBasedStrategy();

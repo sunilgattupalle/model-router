@@ -2,3 +2,4 @@ export { RoutingStrategy, type RoutingDecision, type PromptFeatures, extractFeat
 export { RuleBasedStrategy } from "./rule-based.js";
 export { MLClassifierStrategy } from "./ml-classifier.js";
 export { LLMRoutingStrategy } from "./llm-routing.js";
+export { HybridStrategy } from "./hybrid.js";

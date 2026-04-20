@@ -19,13 +19,15 @@ Routing is **not** a single algorithm. The system supports multiple strategies:
 | **rule-based** | Keyword matching + heuristics | ~1ms | Free | Good |
 | **ml-classifier** | Logistic regression on historical data | ~5ms | Free | Better* |
 | **llm-routing** | LLM analyzes prompt complexity | ~200ms | ~$0.001/route | Best |
+| **hybrid** | Rule-based + ML classifier, confidence-weighted voting | ~6ms | Free | Better+ |
 
-*\*Requires training data from past decisions*
+*\*Requires training data from past decisions*  
+*+Best of both: fast deterministic fallback + learned patterns*
 
 Configure via `config.yaml`:
 ```yaml
 routing:
-  strategy: rule-based  # or ml-classifier, llm-routing
+  strategy: hybrid  # rule-based, ml-classifier, llm-routing, or hybrid
 ```
 
 ### 2. The Feedback Loop
@@ -223,6 +225,15 @@ routing:
 - **Best for**: Maximum accuracy, high-stakes decisions
 - **Works well**: Ambiguous or nuanced prompts
 - **Struggles**: Latency-sensitive applications, cost-constrained use cases
+
+### Hybrid (Recommended)
+- **Best for**: Production use, balanced accuracy + speed
+- **Works well**: All scenarios - combines strengths of both
+- **How it works**: 
+  - If both strategies agree → use that model (high confidence)
+  - If they disagree → use the one with higher confidence
+  - Rule-based provides fast deterministic baseline
+  - ML adds learned patterns from your data
 
 ## CLI Tools
 

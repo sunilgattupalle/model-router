@@ -29,7 +29,7 @@ rules:
     model: sonnet
 
 routing:
-  strategy: rule-based  # Options: rule-based, ml-classifier, llm-routing
+  strategy: rule-based  # Options: rule-based, ml-classifier, llm-routing, hybrid
   # For llm-routing only:
   # llm_api_key: YOUR_API_KEY
   # llm_endpoint: https://api.anthropic.com/v1/messages
