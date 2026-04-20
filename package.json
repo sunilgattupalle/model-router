@@ -12,6 +12,7 @@
     "dashboard": "tsx src/dashboard.ts",
     "cli": "tsx src/cli.ts",
     "validate": "tsx src/validate-classifier.ts",
+    "generate-baseline": "tsx src/generate-baseline.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src/"

@@ -1,15 +1,28 @@
 import { RoutingStrategy, type RoutingDecision, type PromptFeatures } from "./base.js";
 import { getDb } from "../db.js";
+import { readFileSync, existsSync } from "fs";
+import { join } from "path";
 
 interface TrainingExample {
   features: number[];
   label: 0 | 1 | 2; // 0=haiku, 1=sonnet, 2=opus
 }
 
+interface BaselineModel {
+  weights: number[][];
+  metadata: {
+    totalSamples: number;
+    trainingAccuracy: number;
+    features: string[];
+    version: string;
+  };
+}
+
 export class MLClassifierStrategy extends RoutingStrategy {
   name = "ml-classifier";
   private weights: number[][] | null = null;
   private readonly modelMap = ["haiku", "sonnet", "opus"] as const;
+  private usingBaseline = false;
 
   async route(features: PromptFeatures): Promise<RoutingDecision> {
     if (!this.weights) {
@@ -17,7 +30,7 @@ export class MLClassifierStrategy extends RoutingStrategy {
     }
 
     if (!this.weights) {
-      // Fall back to rule-based if no training data
+      // Fall back to rule-based if no training data and no baseline
       return {
         model: features.hasComplexSignal ? "opus" : features.hasActionVerb ? "sonnet" : "haiku",
         reasoning: "ml classifier (untrained, using fallback)",
@@ -30,9 +43,10 @@ export class MLClassifierStrategy extends RoutingStrategy {
     const maxIdx = scores.indexOf(Math.max(...scores));
     const model = this.modelMap[maxIdx];
 
+    const source = this.usingBaseline ? "baseline model" : "custom model";
     return {
       model,
-      reasoning: `ml classifier (score: ${scores[maxIdx].toFixed(2)})`,
+      reasoning: `ml classifier (${source}, score: ${scores[maxIdx].toFixed(2)})`,
       confidence: scores[maxIdx],
     };
   }
@@ -64,6 +78,20 @@ export class MLClassifierStrategy extends RoutingStrategy {
     return expScores.map((s) => s / sumExp);
   }
 
+  private loadBaseline(): void {
+    try {
+      const baselinePath = join(import.meta.dirname, "..", "..", "models", "baseline.json");
+      if (existsSync(baselinePath)) {
+        const raw = readFileSync(baselinePath, "utf-8");
+        const baseline: BaselineModel = JSON.parse(raw);
+        this.weights = baseline.weights;
+        this.usingBaseline = true;
+      }
+    } catch {
+      // Baseline not available
+    }
+  }
+
   private train(): void {
     try {
       const db = getDb();
@@ -81,7 +109,11 @@ export class MLClassifierStrategy extends RoutingStrategy {
         status: string;
       }>;
 
-      if (rows.length < 10) return; // Not enough data
+      if (rows.length < 10) {
+        // Not enough user data, use baseline
+        this.loadBaseline();
+        return;
+      }
 
       const examples: TrainingExample[] = rows.map((r) => {
         const hasQuestion = r.rule_matched.includes("question");

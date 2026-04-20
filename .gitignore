@@ -5,11 +5,12 @@ dist/
 *.db-wal
 .env
 
-# Model artifacts (if we add persistent models in future)
+# Model artifacts (user-trained models only)
 *.pkl
 *.model
 *.weights
 models/*.json
+!models/baseline.json
 
 # User data
 data/*.db
